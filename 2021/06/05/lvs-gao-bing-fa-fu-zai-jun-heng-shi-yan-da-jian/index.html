@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.2.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="//cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.14.0/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/animate.css@3.1.1/animate.min.css">
+
+<script class="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"keren-lee.github.io","root":"/","scheme":"Gemini","version":"8.0.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":false,"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}};
+  </script>
+
+  <meta name="description" content="本文主要记录使用LVS搭建DR模式负载均衡的实验，第一部分高并发。只使用LVS命令方式手动搭建；第二部分高可用。使用keepalived来自动配置LVS，以及保证负载均衡器达到高可用（HA）。  第一部分、高并发1、环境准备准备三台虚拟机node1、node2、node3，本操作实验使用的系统为centos7系统，其中node1作为负载均衡服务器(Virtual Server，后文简称VS，其I">
+<meta property="og:type" content="article">
+<meta property="og:title" content="LVS高并发负载均衡实验搭建">
+<meta property="og:url" content="http://keren-lee.github.io/2021/06/05/lvs-gao-bing-fa-fu-zai-jun-heng-shi-yan-da-jian/index.html">
+<meta property="og:site_name" content="keren的笔记">
+<meta property="og:description" content="本文主要记录使用LVS搭建DR模式负载均衡的实验，第一部分高并发。只使用LVS命令方式手动搭建；第二部分高可用。使用keepalived来自动配置LVS，以及保证负载均衡器达到高可用（HA）。  第一部分、高并发1、环境准备准备三台虚拟机node1、node2、node3，本操作实验使用的系统为centos7系统，其中node1作为负载均衡服务器(Virtual Server，后文简称VS，其I">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tyung.oss-cn-shanghai.aliyuncs.com/img/image-20210605224206880.png">
+<meta property="og:image" content="https://tyung.oss-cn-shanghai.aliyuncs.com/img/image-20210605224352368.png">
+<meta property="og:image" content="https://tyung.oss-cn-shanghai.aliyuncs.com/img/image-20210605225207435.png">
+<meta property="og:image" content="https://tyung.oss-cn-shanghai.aliyuncs.com/img/image-20210605225705035.png">
+<meta property="og:image" content="https://tyung.oss-cn-shanghai.aliyuncs.com/img/image-20210605230052138.png">
+<meta property="article:published_time" content="2021-06-05T02:48:48.000Z">
+<meta property="article:modified_time" content="2021-06-05T16:16:44.368Z">
+<meta property="article:author" content="Keren Lee">
+<meta property="article:tag" content="LVS,高并发,高可用">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tyung.oss-cn-shanghai.aliyuncs.com/img/image-20210605224206880.png">
+
+
+<link rel="canonical" href="http://keren-lee.github.io/2021/06/05/lvs-gao-bing-fa-fu-zai-jun-heng-shi-yan-da-jian/">
+
+
+<script class="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>LVS高并发负载均衡实验搭建 | keren的笔记</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  body { margin-top: 2rem; }
+
+  .use-motion .menu-item,
+  .use-motion .sidebar,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header {
+    visibility: visible;
+  }
+
+  .use-motion .header,
+  .use-motion .site-brand-container .toggle,
+  .use-motion .footer { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle,
+  .use-motion .custom-logo-image {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line {
+    transform: scaleX(1);
+  }
+
+  .search-pop-overlay, .sidebar-nav { display: none; }
+  .sidebar-panel { display: block; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <h1 class="site-title">keren的笔记</h1>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</div>
+        
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <section class="post-toc-wrap sidebar-panel">
+          <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%AC%AC%E4%B8%80%E9%83%A8%E5%88%86%E3%80%81%E9%AB%98%E5%B9%B6%E5%8F%91"><span class="nav-number">1.</span> <span class="nav-text">第一部分、高并发</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1%E3%80%81%E7%8E%AF%E5%A2%83%E5%87%86%E5%A4%87"><span class="nav-number">1.1.</span> <span class="nav-text">1、环境准备</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2%E3%80%81RS%E6%9C%8D%E5%8A%A1%E5%99%A8%E9%85%8D%E7%BD%AE"><span class="nav-number">1.2.</span> <span class="nav-text">2、RS服务器配置</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1%E3%80%81arp%E5%8D%8F%E8%AE%AE%E5%86%85%E6%A0%B8%E5%8F%82%E6%95%B0%E4%BF%AE%E6%94%B9"><span class="nav-number">1.2.1.</span> <span class="nav-text">2.1、arp协议内核参数修改</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2%E3%80%81%E9%9A%90%E8%97%8FVIP%E9%85%8D%E7%BD%AE"><span class="nav-number">1.2.2.</span> <span class="nav-text">2.2、隐藏VIP配置</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-3%E3%80%81%E5%AE%89%E8%A3%85%E6%B5%8B%E8%AF%95%E6%9C%8D%E5%8A%A1%E5%99%A8"><span class="nav-number">1.2.3.</span> <span class="nav-text">2.3、安装测试服务器</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3%E3%80%81VS%E6%9C%8D%E5%8A%A1%E5%99%A8%E9%85%8D%E7%BD%AE"><span class="nav-number">1.3.</span> <span class="nav-text">3、VS服务器配置</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#3-1%E3%80%81%E5%AE%89%E8%A3%85LVS%E7%AE%A1%E7%90%86%E6%A8%A1%E5%9D%97ipvsadm"><span class="nav-number">1.3.1.</span> <span class="nav-text">3.1、安装LVS管理模块ipvsadm</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-1%E3%80%81%E9%85%8D%E7%BD%AEVIP"><span class="nav-number">1.3.2.</span> <span class="nav-text">3.1、配置VIP</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-2%E3%80%81%E9%85%8D%E7%BD%AE%E8%B4%9F%E8%BD%BD%E5%9D%87%E8%A1%A1%E8%A7%84%E5%88%99"><span class="nav-number">1.3.3.</span> <span class="nav-text">3.2、配置负载均衡规则</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%AC%AC%E4%BA%8C%E9%83%A8%E5%88%86%E3%80%81%E9%AB%98%E5%8F%AF%E7%94%A8"><span class="nav-number">2.</span> <span class="nav-text">第二部分、高可用</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1%E3%80%81%E7%8E%AF%E5%A2%83%E5%87%86%E5%A4%87-1"><span class="nav-number">2.1.</span> <span class="nav-text">1、环境准备</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2%E3%80%81%E5%AE%89%E8%A3%85keepalived"><span class="nav-number">2.2.</span> <span class="nav-text">2、安装keepalived</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3%E3%80%81%E9%85%8D%E7%BD%AEkeepalived"><span class="nav-number">2.3.</span> <span class="nav-text">3、配置keepalived</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4%E3%80%81%E5%90%AF%E5%8A%A8keepalive"><span class="nav-number">2.4.</span> <span class="nav-text">4、启动keepalive</span></a></li></ol></li></ol></div>
+      </section>
+      <!--/noindex-->
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-author site-overview-item animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Keren Lee</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap site-overview-item animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives">
+          <span class="site-state-item-count">4</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+
+
+      </section>
+    </div>
+  </aside>
+  <div class="sidebar-dimmer"></div>
+
+
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+    <div class="main-inner post posts-expand">
+      
+
+      
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://keren-lee.github.io/2021/06/05/lvs-gao-bing-fa-fu-zai-jun-heng-shi-yan-da-jian/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Keren Lee">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="keren的笔记">
+    </span>
+
+    
+    
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          LVS高并发负载均衡实验搭建
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2021-06-05 10:48:48" itemprop="dateCreated datePublished" datetime="2021-06-05T10:48:48+08:00">2021-06-05</time>
+    </span>
+      <span class="post-meta-item">
+        <span class="post-meta-item-icon">
+          <i class="far fa-calendar-check"></i>
+        </span>
+        <span class="post-meta-item-text">更新于</span>
+        <time title="修改时间：2021-06-06 00:16:44" itemprop="dateModified" datetime="2021-06-06T00:16:44+08:00">2021-06-06</time>
+      </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+        <blockquote>
+<p>本文主要记录使用LVS搭建DR模式负载均衡的实验，第一部分高并发。只使用LVS命令方式手动搭建；第二部分高可用。使用keepalived来自动配置LVS，以及保证负载均衡器达到高可用（HA）。</p>
+</blockquote>
+<h2 id="第一部分、高并发"><a href="#第一部分、高并发" class="headerlink" title="第一部分、高并发"></a>第一部分、高并发</h2><h3 id="1、环境准备"><a href="#1、环境准备" class="headerlink" title="1、环境准备"></a>1、环境准备</h3><p>准备三台虚拟机node1、node2、node3，本操作实验使用的系统为centos7系统，其中node1作为负载均衡服务器(Virtual Server，后文简称VS，其IP简称VIP)，node2和node3做为服务端服务器（Real Server，后文简称为RS，其IP简称RIP），具体流程为客户端会发送请求到VS负载均衡器的VIP地址，然后VS会把对应的请求根据负载策略负载到RS端。</p>
+<h3 id="2、RS服务器配置"><a href="#2、RS服务器配置" class="headerlink" title="2、RS服务器配置"></a>2、RS服务器配置</h3><h4 id="2-1、arp协议内核参数修改"><a href="#2-1、arp协议内核参数修改" class="headerlink" title="2.1、arp协议内核参数修改"></a>2.1、arp协议内核参数修改</h4><p>该步骤为在RS端配置一个隐藏的VIP做准备。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">echo</span> 1 &gt; /proc/sys/net/ipv4/conf/ens33/arp_ignore  <span class="comment">#ens33为网卡名称</span></span><br><span class="line"><span class="built_in">echo</span> 1 &gt; /proc/sys/net/ipv4/conf/all/arp_ignore</span><br><span class="line"><span class="built_in">echo</span> 2 &gt; /proc/sys/net/ipv4/conf/ens33/arp_announce</span><br><span class="line"><span class="built_in">echo</span> 2 &gt; /proc/sys/net/ipv4/conf/all/arp_announce</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>arp_ignore<ul>
+<li>0：只要本地配置的有相应地址，就给予响应</li>
+<li>1：仅在请求的目标(MAC)地址配置请求到达接口上的时候，才给予响应、</li>
+</ul>
+</li>
+<li>arp_announce<ul>
+<li>0：将本地任何接口上的任何地址向外通告</li>
+<li>1：试图仅向目标网络通告与其网络匹配的地址</li>
+<li>2：仅向与本地接口上地址匹配的网络进行通告</li>
+</ul>
+</li>
+</ul>
+<h4 id="2-2、隐藏VIP配置"><a href="#2-2、隐藏VIP配置" class="headerlink" title="2.2、隐藏VIP配置"></a>2.2、隐藏VIP配置</h4><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># IP配置到lo环回接口上，lo:2为lo网卡接口的子接口，数字随意。</span></span><br><span class="line">ifconfig lo:2 192.168.45.100 netmask 255.255.255.255</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://tyung.oss-cn-shanghai.aliyuncs.com/img/image-20210605224206880.png" alt="image-20210605224206880"></p>
+<h4 id="2-3、安装测试服务器"><a href="#2-3、安装测试服务器" class="headerlink" title="2.3、安装测试服务器"></a>2.3、安装测试服务器</h4><p>本次测试安装的是apache服务器，其中有一个简单的页面，请求后显示当前RS服务器的IP地址，方便实验。也可以用其他的测试应用，比如nginx，springboot的一个简单等等。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 安装apache应用服务器</span></span><br><span class="line">yum install -y httpd</span><br><span class="line"><span class="comment"># 配置一个简单页面</span></span><br><span class="line"><span class="built_in">echo</span> <span class="string">&quot;from 192.168.45.10&quot;</span> &gt; /var/www/html/index.html</span><br><span class="line"><span class="comment"># 启动apache，启动后访问返回的内容如下面的截图中</span></span><br><span class="line">service httpd start</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://tyung.oss-cn-shanghai.aliyuncs.com/img/image-20210605224352368.png" alt="image-20210605224352368"></p>
+<p>注意：使用apache服务器需要注意一个问题，在http1.1协议时，服务器默认开启了keepalive，环境搭建完成测试的时候会出现一个问题（本来配置了轮询策略，但是在请求VS后，RS很久才会切换到另外一台），需要在httpd配置文件中关闭keepalive（<code>keepalive off</code>）。</p>
+<h3 id="3、VS服务器配置"><a href="#3、VS服务器配置" class="headerlink" title="3、VS服务器配置"></a>3、VS服务器配置</h3><h4 id="3-1、安装LVS管理模块ipvsadm"><a href="#3-1、安装LVS管理模块ipvsadm" class="headerlink" title="3.1、安装LVS管理模块ipvsadm"></a>3.1、安装LVS管理模块ipvsadm</h4><p>linux系统内核默认安装了LVS负载均衡模块，即ipvs，我们只需要按住交互的接口模块，即ipvsadm即可。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">yum install -y ipvsadm</span><br></pre></td></tr></table></figure>
+
+<h4 id="3-1、配置VIP"><a href="#3-1、配置VIP" class="headerlink" title="3.1、配置VIP"></a>3.1、配置VIP</h4><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ifconfig ens33:2 192.168.45.100/24</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://tyung.oss-cn-shanghai.aliyuncs.com/img/image-20210605225207435.png" alt="image-20210605225207435"></p>
+<h4 id="3-2、配置负载均衡规则"><a href="#3-2、配置负载均衡规则" class="headerlink" title="3.2、配置负载均衡规则"></a>3.2、配置负载均衡规则</h4><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -A 配置VS服务，-t tcp协议，-s rr：负载调度策略轮询</span></span><br><span class="line">ipvsadm -A -t 192.168.45.100:80 -s rr</span><br><span class="line"><span class="comment"># 配置第一台RS服务：-a 配置RS服务 -r RS的IP地址 -g DR模式，-w 权重</span></span><br><span class="line">ipvsadm -a -t 192.168.45.100:80 -r 192.168.45.10 -g -w 1</span><br><span class="line"><span class="comment"># 配置第二台RS服务</span></span><br><span class="line">ipvsadm -a -t 192.168.45.100:80 -r 192.168.45.10 -g -w 1</span><br><span class="line"><span class="comment"># 显示配置好的规则</span></span><br><span class="line">ipvsadm -ln</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://tyung.oss-cn-shanghai.aliyuncs.com/img/image-20210605225705035.png" alt="image-20210605225705035"></p>
+<p>到此LVS高可用配置完成，访问<code>http://192.168.45.100</code>，刷新即可看到实验结果：上面配置的为rr轮询负载调度策略，没请求一次显示出来的IP地址不一样。</p>
+<p><img src="https://tyung.oss-cn-shanghai.aliyuncs.com/img/image-20210605230052138.png" alt="image-20210605230052138"></p>
+<h2 id="第二部分、高可用"><a href="#第二部分、高可用" class="headerlink" title="第二部分、高可用"></a>第二部分、高可用</h2><p>上面的VS配置存在一些弊端：</p>
+<ul>
+<li>VS单点故障。</li>
+<li>配置在内存里面，关机后即消失。</li>
+<li>RS健康状态无法检查。</li>
+</ul>
+<p>针对上面的一些弊端，现在引入keepalived工具，实现VS高可用，配置写在配置文件里面，keepalived会自动帮我们配置VS的配置，而且keepalived还可以监控RS的监控状态，及时把存在问题的RS从VS负载规则里面剔除。</p>
+<h3 id="1、环境准备-1"><a href="#1、环境准备-1" class="headerlink" title="1、环境准备"></a>1、环境准备</h3><p>需要再准备一台虚拟机node4，用来做LVS的备机，即VS服务为主备模式。</p>
+<h3 id="2、安装keepalived"><a href="#2、安装keepalived" class="headerlink" title="2、安装keepalived"></a>2、安装keepalived</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">yum install -y keepalived</span><br></pre></td></tr></table></figure>
+
+<h3 id="3、配置keepalived"><a href="#3、配置keepalived" class="headerlink" title="3、配置keepalived"></a>3、配置keepalived</h3><p>配置文件<code>/etc/keepalived/keep</code></p>
+<ul>
+<li>主VS配置：只列出关键需要配置的部分</li>
+</ul>
+<figure class="highlight properties"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">! Configuration File for keepalived</span></span><br><span class="line"><span class="attr">vrrp_instance</span> <span class="string">VI_1 &#123;</span></span><br><span class="line"><span class="comment">		# 主</span></span><br><span class="line">    <span class="attr">state</span> <span class="string">MASTER</span></span><br><span class="line">    <span class="attr">interface</span> <span class="string">ens33</span></span><br><span class="line">    <span class="attr">virtual_router_id</span> <span class="string">51</span></span><br><span class="line">    <span class="attr">priority</span> <span class="string">100</span></span><br><span class="line">    <span class="attr">advert_int</span> <span class="string">1</span></span><br><span class="line">    <span class="attr">authentication</span> <span class="string">&#123;</span></span><br><span class="line">        <span class="attr">auth_type</span> <span class="string">PASS</span></span><br><span class="line">        <span class="attr">auth_pass</span> <span class="string">1111</span></span><br><span class="line">    <span class="attr">&#125;</span></span><br><span class="line">    <span class="attr">virtual_ipaddress</span> <span class="string">&#123;</span></span><br><span class="line"><span class="comment">        # VIP配置</span></span><br><span class="line">        <span class="meta">192.168.45.100/24</span> <span class="string">dev ens33 label ens33:8</span></span><br><span class="line">    <span class="attr">&#125;</span></span><br><span class="line"><span class="attr">&#125;</span></span><br><span class="line"><span class="comment"># VS负载规则配置</span></span><br><span class="line"><span class="attr">virtual_server</span> <span class="string">192.168.45.100 80 &#123;</span></span><br><span class="line">    <span class="attr">delay_loop</span> <span class="string">6</span></span><br><span class="line"><span class="comment">    # 轮询</span></span><br><span class="line">    <span class="attr">lb_algo</span> <span class="string">rr</span></span><br><span class="line"><span class="comment">    # DR模式</span></span><br><span class="line">    <span class="attr">lb_kind</span> <span class="string">DR</span></span><br><span class="line">    <span class="attr">persistence_timeout</span> <span class="string">0</span></span><br><span class="line">    <span class="attr">protocol</span> <span class="string">TCP</span></span><br><span class="line"><span class="comment">		# RS服务器配置</span></span><br><span class="line">    <span class="attr">real_server</span> <span class="string">192.168.45.10 80 &#123;</span></span><br><span class="line">        <span class="attr">weight</span> <span class="string">1</span></span><br><span class="line"><span class="comment">        # RS服务健康检查配置</span></span><br><span class="line">        <span class="attr">HTTP_GET</span> <span class="string">&#123;</span></span><br><span class="line">            <span class="attr">url</span> <span class="string">&#123;</span></span><br><span class="line">              <span class="attr">path</span> <span class="string">/</span></span><br><span class="line">              <span class="attr">status_code</span> <span class="string">200</span></span><br><span class="line">            <span class="attr">&#125;</span></span><br><span class="line">            <span class="attr">connect_timeout</span> <span class="string">3</span></span><br><span class="line">            <span class="attr">nb_get_retry</span> <span class="string">3</span></span><br><span class="line">            <span class="attr">delay_before_retry</span> <span class="string">3</span></span><br><span class="line">        <span class="attr">&#125;</span></span><br><span class="line">    <span class="attr">&#125;</span></span><br><span class="line">    <span class="attr">real_server</span> <span class="string">192.168.45.12 80 &#123;</span></span><br><span class="line">        <span class="attr">weight</span> <span class="string">1</span></span><br><span class="line">        <span class="attr">HTTP_GET</span> <span class="string">&#123;</span></span><br><span class="line">            <span class="attr">url</span> <span class="string">&#123;</span></span><br><span class="line">              <span class="attr">path</span> <span class="string">/</span></span><br><span class="line">              <span class="attr">status_code</span> <span class="string">200</span></span><br><span class="line">            <span class="attr">&#125;</span></span><br><span class="line">            <span class="attr">connect_timeout</span> <span class="string">3</span></span><br><span class="line">            <span class="attr">nb_get_retry</span> <span class="string">3</span></span><br><span class="line">            <span class="attr">delay_before_retry</span> <span class="string">3</span></span><br><span class="line">        <span class="attr">&#125;</span></span><br><span class="line">    <span class="attr">&#125;</span></span><br><span class="line"><span class="attr">&#125;</span></span><br></pre></td></tr></table></figure>
+
+
+
+<ul>
+<li>备VS配置</li>
+</ul>
+<p>唯一区别为<code>state BACKUP</code></p>
+<h3 id="4、启动keepalive"><a href="#4、启动keepalive" class="headerlink" title="4、启动keepalive"></a>4、启动keepalive</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">service keepalive start</span><br></pre></td></tr></table></figure>
+
+<p>至此，配置完成。</p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/LVS-%E9%AB%98%E5%B9%B6%E5%8F%91-%E9%AB%98%E5%8F%AF%E7%94%A8/" rel="tag"># LVS,高并发,高可用</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2020/12/28/guan-yu-ya-ce-oracle-ku-biao-shu-ju-qing-li-wen-ti/" rel="prev" title="关于压测oracle库表数据清理问题">
+                  <i class="fa fa-chevron-left"></i> 关于压测oracle库表数据清理问题
+                </a>
+            </div>
+            <div class="post-nav-item">
+            </div>
+          </div>
+    </footer>
+  </article>
+  
+  
+  
+
+
+
+      
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      const activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      const commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      
+
+      
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2021</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Keren Lee</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <script src="//cdn.jsdelivr.net/npm/animejs@3.2.0/lib/anime.min.js"></script>
+<script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
